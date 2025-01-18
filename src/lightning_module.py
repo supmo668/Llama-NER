@@ -7,15 +7,20 @@ from src.model import TokenClassificationModel
 import yaml
 
 class NERLightningModule(pl.LightningModule):
-    def __init__(self, config_path):
+    def __init__(self, config_path=None):
         super().__init__()
-        with open(config_path, 'r') as f:
-            self.cfg = yaml.safe_load(f)
-        
-        self.model = TokenClassificationModel(config_path)
-        self.learning_rate = float(self.cfg['training']['lr'])
-        self.save_hyperparameters()
-    
+        if config_path:
+            with open(config_path, 'r') as f:
+                self.cfg = yaml.safe_load(f)
+            
+            self.model = TokenClassificationModel(config_path)
+            self.learning_rate = float(self.cfg['training']['lr'])
+            self.save_hyperparameters()
+
+    @staticmethod
+    def load_model_from_checkpoint(checkpoint_path):
+        return NERLightningModule.load_from_checkpoint(checkpoint_path)
+
     def forward(self, batch):
         return self.model(
             input_ids=batch["input_ids"],

@@ -3,6 +3,63 @@ import torch.nn as nn
 from transformers import AutoConfig, AutoModel
 from torchcrf import CRF
 import yaml
+from torch.nn import CrossEntropyLoss
+from src.losses.focal_loss import FocalLoss
+from src.losses.label_smoothing import LabelSmoothingCrossEntropy
+
+def configure_loss_function(cfg, crf=None):
+    """
+    Configure the loss function based on the configuration.
+    
+    Args:
+        cfg: Configuration dictionary.
+            - Expected to contain loss function configuration under 'training.losses'.
+        crf: Optional CRF layer for calculating CRF loss.
+    
+    Returns:
+        A loss function instance or a combination of loss functions.
+
+    Dimensionality:
+        For label_smoothing:
+            inputs: Predicted logits (batch_size * sequence_length, num_classes)
+            targets: Ground truth labels (batch_size * sequence_length)
+    """
+    loss_function = cfg['training']['losses'].get('loss_function', 'cross_entropy')
+    if loss_function == 'compound_loss':
+        # Compound loss configuration
+        cross_entropy_weight = cfg['training']['losses']['compound_loss'].get('cross_entropy_weight', 0.5)
+        crf_weight = cfg['training']['losses']['compound_loss'].get('crf_weight', 0.3)
+        label_smoothing_weight = cfg['training']['losses']['compound_loss'].get('label_smoothing_weight', 0.2)
+
+        cross_entropy_loss = CrossEntropyLoss(ignore_index=-100)
+        label_smoothing_loss = LabelSmoothingCrossEntropy(smoothing=cfg['training']['losses']['label_smoothing']['smoothing'])
+
+        def compound_loss_fn(logits, labels, valid_positions):
+            # Cross-Entropy Loss
+            active_loss = valid_positions.view(-1) == 1
+            active_logits = logits.view(-1, logits.size(-1))[active_loss]
+            active_labels = labels.view(-1)[active_loss]
+            ce_loss = cross_entropy_loss(active_logits, active_labels)
+
+            # CRF Loss
+            crf_loss = -crf(logits, labels, mask=valid_positions) if crf else 0
+
+            # Label Smoothing Loss
+            ls_loss = label_smoothing_loss(active_logits, active_labels)
+
+            # Weighted sum of losses
+            total_loss = (cross_entropy_weight * ce_loss) + (crf_weight * crf_loss) + (label_smoothing_weight * ls_loss)
+            return total_loss
+
+        return compound_loss_fn
+    elif loss_function == 'focal_loss':
+        return FocalLoss(alpha=cfg['training']['losses']['focal_loss']['alpha'],
+                         gamma=cfg['training']['losses']['focal_loss']['gamma'])
+    elif loss_function == 'label_smoothing':
+        return LabelSmoothingCrossEntropy(smoothing=cfg['training']['losses']['label_smoothing']['smoothing'])
+    else:
+        return CrossEntropyLoss(ignore_index=-100)
+
 
 class TokenClassificationModel(nn.Module):
     def __init__(self, config_path):
@@ -33,13 +90,15 @@ class TokenClassificationModel(nn.Module):
             self.crf = CRF(self.num_labels, batch_first=True)
         else:
             self.crf = None
-    
+
+        # Configure loss function using the modularized function
+        self.loss_fct = configure_loss_function(cfg, self.crf)
+
     def forward(self, input_ids, attention_mask, labels=None):
         # Ensure the first timestep in the attention mask is all True
         attention_mask[:, 0] = 1
         # Optional: check label device
         if labels is not None:
-            # labels = labels.to(device)
             # Safety checks if you suspect out-of-bound labels
             assert labels.max() < self.num_labels or labels.max() == -100, \
                 f"Label index out of range: max={labels.max()} >= num_labels={self.num_labels}"
@@ -52,46 +111,28 @@ class TokenClassificationModel(nn.Module):
         sequence_output = self.dropout(sequence_output)
         logits = self.classifier(sequence_output)  # (batch_size, seq_length, num_labels)
         
-        # 3. CRF branch
-        if self.crf is not None:
-            if labels is not None:
-                # Create a mask that excludes positions where labels == -100 or attention_mask == 0
-                valid_positions = (labels != -100) & attention_mask.bool()
+        # Calculate loss and decode tags if labels are provided
+        loss = None
+        decoded_tags = None
+        if labels is not None:
+            # Create a mask that excludes positions where labels == -100 or attention_mask == 0
+            valid_positions = (labels != -100) & attention_mask.bool()
 
-                # Replace -100 labels with a safe index (e.g., 0 for "O")
-                labels_for_crf = labels.clone()
-                labels_for_crf[labels_for_crf == -100] = 0
-                # Ensure the first timestep is always unmasked for CRF
-                valid_positions[:, 0] = True
+            # Replace -100 labels with a safe index (e.g., 0 for "O")
+            labels_for_crf = labels.clone()
+            labels_for_crf[labels_for_crf == -100] = 0
+            # Ensure the first timestep is always unmasked for CRF
+            valid_positions[:, 0] = True
 
-                # CRF loss is negative log-likelihood, so we take the negative
-                loss = -self.crf(logits, labels_for_crf, mask=valid_positions)
-                
-                # We also decode using the same mask
-                # => returns a list of list of predicted labels per sequence
+            # Compute loss using the configured loss function
+            loss = self.loss_fct(logits, labels_for_crf, valid_positions)
+
+            # Decode using the same mask if CRF is used
+            if self.crf is not None:
                 decoded_tags = self.crf.decode(logits, mask=valid_positions)
-                
-                # Return the "logits" as the decoded tags from the CRF
-                return {"loss": loss, "logits": decoded_tags}
-            else:
-                # Inference mode
-                # We consider the entire attention_mask
-                decoded_tags = self.crf.decode(logits, mask=attention_mask.bool())
-                return {"logits": decoded_tags}
-        
-        # 4. Standard cross-entropy path
         else:
-            loss = None
-            if labels is not None:
-                # Standard token-level cross-entropy with ignore_index = -100
-                loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
+            # Inference mode
+            if self.crf is not None:
+                decoded_tags = self.crf.decode(logits, mask=attention_mask.bool())
 
-                # Flatten the tokens for cross-entropy
-                # We'll use attention_mask to ignore padding, plus ignore_index=-100
-                active_loss = attention_mask.view(-1) == 1
-                active_logits = logits.view(-1, self.num_labels)[active_loss]
-                active_labels = labels.view(-1)[active_loss]
-                
-                loss = loss_fct(active_logits, active_labels)
-            
-            return {"loss": loss, "logits": logits}
+        return {"loss": loss, "logits": decoded_tags if decoded_tags is not None else logits}

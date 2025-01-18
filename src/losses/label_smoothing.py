@@ -22,11 +22,17 @@ class LabelSmoothingCrossEntropy(nn.Module):
     
     def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """
+        Compute the label smoothing loss.
+        
         Args:
-            inputs: Predicted logits (batch_size, sequence_length, num_classes)
-            targets: Ground truth labels (batch_size, sequence_length)
+            inputs: Predicted logits (batch_size * sequence_length, num_classes)
+            targets: Ground truth labels (batch_size * sequence_length)
+        
+        Returns:
+            Loss value computed with label smoothing.
         """
-        batch_size, seq_length, num_classes = inputs.size()
+        # Assume inputs are flattened as (batch_size * sequence_length, num_classes)
+        num_classes = inputs.size(-1)
         
         # Create a mask for ignored indices
         mask = (targets != self.ignore_index).float()
