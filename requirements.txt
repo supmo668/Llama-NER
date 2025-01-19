@@ -7,3 +7,5 @@ click>=8.0.0
 seqeval>=1.2.2
 pytorch-crf>=0.7.2
 python-dotenv
+# For using the uv package management tool
+uv

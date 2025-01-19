@@ -193,6 +193,37 @@ my_ner_project/
 
 ---
 
+## Using the Python UV CLI Tool
+
+For convenience and abstraction from dependencies, you can use the `uv` package management tool to run the various components of this NER pipeline. This tool simplifies the execution of scripts by managing the environment and dependencies.
+
+### Installation
+
+Make sure you have the `uv` package installed:
+
+```bash
+pip install uv
+```
+
+### Running the CLI Commands
+
+You can use the following commands to run the data preparation, training, and evaluation steps:
+
+```bash
+# Prepare Data
+uv run src.cli prepare_data --config-path config/config.yaml --ratio 0.8
+
+# Train Model
+uv run src.cli run_train --config-path config/config.yaml
+
+# Evaluate Model
+uv run src.cli run_evaluate --config-path config/config.yaml --split test
+```
+
+These commands will execute the respective functions using the `uv` tool, ensuring that all dependencies are correctly managed and isolated.
+
+---
+
 ## Innovation: Advanced Loss Objectives
 
 ### Enhanced Label Smoothing with Embeddings
