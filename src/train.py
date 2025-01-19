@@ -49,7 +49,20 @@ def run_training(config_path: str):
     )
     
     # Initialize model
-    model = NERLightningModule(config_path)
+    if cfg['training'].get('use_checkpoint', False):
+        # Find latest checkpoint
+        checkpoint_dir = cfg['training']['checkpoint_dir']
+        checkpoints = [f for f in os.listdir(checkpoint_dir) if f.endswith('.ckpt')]
+        if checkpoints:
+            latest_checkpoint = max(checkpoints, key=lambda f: os.path.getctime(os.path.join(checkpoint_dir, f)))
+            checkpoint_path = os.path.join(checkpoint_dir, latest_checkpoint)
+            print(f"Resuming from checkpoint: {checkpoint_path}")
+            model = NERLightningModule.load_model_from_checkpoint(checkpoint_path)
+        else:
+            print("No checkpoint found, starting training from scratch.")
+            model = NERLightningModule(config_path)
+    else:
+        model = NERLightningModule(config_path)
     
     # Setup callbacks
     checkpoint_callback = ModelCheckpoint(

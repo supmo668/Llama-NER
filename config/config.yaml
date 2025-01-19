@@ -11,10 +11,11 @@ model:
 
 training:
   lr: 5e-5
-  epochs: 3
+  epochs: 100
   gpus: 1
   log_dir: "lightning_logs"
   checkpoint_dir: "checkpoints"
+  use_checkpoint: false
   losses:
     loss_function: "compound_loss"  
     # Options: 'cross_entropy', 'focal_loss', 'label_smoothing', 'compound_loss'
