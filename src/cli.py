@@ -2,7 +2,7 @@ import click
 from src import data_prep, train, evaluate
 import yaml
 import os
-from src.models import NERLightningModule
+from src.lightning_module import NERLightningModule
 
 from dotenv import load_dotenv
 load_dotenv()
