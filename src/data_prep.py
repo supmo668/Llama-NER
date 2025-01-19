@@ -8,6 +8,7 @@ def prepare_data(config_path: str, ratio: float = 1.0):
     Prepare and process the 'eriktks/conll2003' dataset for a token-level
     classification task (NER). The processed splits (train/val/test) are saved
     to disk in a 'data/processed/' directory.
+    Additionally, saves the label list for NER tags to be used during evaluation.
     
     Args:
         config_path: Path to the configuration file.
@@ -26,6 +27,12 @@ def prepare_data(config_path: str, ratio: float = 1.0):
     # 3. Load dataset
     raw_datasets = load_dataset(dataset_name)
     # raw_datasets should now contain keys: ["train", "validation", "test"]
+
+    # Save label list for NER tags
+    label_list = raw_datasets['train'].features['ner_tags'].feature.names
+    with open(os.path.join('data', 'processed', 'label_list.txt'), 'w') as label_file:
+        for label in label_list:
+            label_file.write(label + "\n")
 
     # Reduce dataset size according to the ratio
     if ratio < 1.0:

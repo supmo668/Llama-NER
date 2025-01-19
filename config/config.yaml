@@ -11,7 +11,7 @@ model:
 
 training:
   lr: 5e-5
-  epochs: 100
+  epochs: 3
   gpus: 1
   log_dir: "lightning_logs"
   checkpoint_dir: "checkpoints"
@@ -28,6 +28,9 @@ training:
       gamma: 2.0
     label_smoothing:
       smoothing: 0.1
+
+evaluation:
+  load_checkpoint: true  # Whether to load the latest checkpoint for evaluation
 
 advanced:
   use_crf: true

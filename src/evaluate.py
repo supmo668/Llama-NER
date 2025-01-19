@@ -2,9 +2,10 @@ import yaml
 import os
 import torch
 from torch.utils.data import DataLoader
-from datasets import load_from_disk
+from datasets import load_from_disk, load_dataset
 import pytorch_lightning as pl
 from seqeval.metrics import precision_score, recall_score, f1_score, classification_report
+from pathlib import Path
 
 from src.lightning_module import NERLightningModule
 
@@ -20,12 +21,39 @@ def convert_predictions_to_labels(predictions, label_list):
         converted.append(converted_seq)
     return converted
 
+def calculate_metrics(predictions, references, label_list):
+    """
+    Calculate evaluation metrics for NER predictions.
+    
+    Args:
+        predictions: List of predicted label sequences.
+        references: List of true label sequences.
+        label_list: List of all possible labels.
+    
+    Returns:
+        A dictionary containing precision, recall, and F1 score.
+    """
+    pred_labels = convert_predictions_to_labels(predictions, label_list)
+    true_labels = convert_predictions_to_labels(references, label_list)
+
+    precision = precision_score(true_labels, pred_labels)
+    recall = recall_score(true_labels, pred_labels)
+    f1 = f1_score(true_labels, pred_labels)
+
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "classification_report": classification_report(true_labels, pred_labels)
+    }
+
+
 def run_evaluation(config_path: str, split: str = 'test'):
     with open(config_path, 'r') as f:
         cfg = yaml.safe_load(f)
     
     # Load dataset
-    eval_data = load_from_disk(os.path.join("data", "processed", split))
+    eval_data = load_from_disk(Path("data/processed") / split)
     eval_dataloader = DataLoader(
         eval_data,
         batch_size=cfg['data']['batch_size'],
@@ -36,11 +64,11 @@ def run_evaluation(config_path: str, split: str = 'test'):
     model = NERLightningModule(config_path)
     
     # If there's a checkpoint, load it
-    checkpoint_dir = 'checkpoints'
-    if os.path.exists(checkpoint_dir):
-        checkpoints = [f for f in os.listdir(checkpoint_dir) if f.endswith('.ckpt')]
+    checkpoint_dir = Path('checkpoints')
+    if checkpoint_dir.exists():
+        checkpoints = list(checkpoint_dir.glob('*.ckpt'))
         if checkpoints:
-            latest_checkpoint = max([os.path.join(checkpoint_dir, ckpt) for ckpt in checkpoints], key=os.path.getctime)
+            latest_checkpoint = max(checkpoints, key=lambda ckpt: ckpt.stat().st_ctime)
             print(f"Loading checkpoint: {latest_checkpoint}")
             model = model.load_from_checkpoint(latest_checkpoint, config_path=config_path)
     
@@ -82,21 +110,18 @@ def run_evaluation(config_path: str, split: str = 'test'):
                 predictions.append(valid_pred)
                 references.append(valid_label)
     
-    # Convert to label strings (assuming you have a label list)
-    label_list = ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-MISC", "I-MISC"]  # Example
-    pred_labels = convert_predictions_to_labels(predictions, label_list)
-    true_labels = convert_predictions_to_labels(references, label_list)
+    # Load label list from the saved file
+    label_list_path = Path('data/processed/label_list.txt')
+    with label_list_path.open('r') as label_file:
+        label_list = [line.strip() for line in label_file]
     
-    # Calculate metrics
-    precision = precision_score(true_labels, pred_labels)
-    recall = recall_score(true_labels, pred_labels)
-    f1 = f1_score(true_labels, pred_labels)
+    metrics = calculate_metrics(predictions, references, label_list)
     
     print(f"\nEvaluation on {split} set:")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall: {recall:.4f}")
-    print(f"F1 Score: {f1:.4f}")
+    print(f"Precision: {metrics['precision']:.4f}")
+    print(f"Recall: {metrics['recall']:.4f}")
+    print(f"F1 Score: {metrics['f1']:.4f}")
     
     # Detailed classification report
     print("\nDetailed Classification Report:")
-    print(classification_report(true_labels, pred_labels))
+    print(metrics['classification_report'])

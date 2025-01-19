@@ -1,5 +1,8 @@
 import click
 from src import data_prep, train, evaluate
+import yaml
+import os
+from src.models import NERLightningModule
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -27,6 +30,22 @@ def run_train(config_path):
 @click.option('--split', default='test', help='Dataset split to evaluate on.')
 def run_evaluate(config_path, split):
     """Evaluate the NER model on a specified split."""
+    with open(config_path, 'r') as f:
+        cfg = yaml.safe_load(f)
+
+    if cfg['evaluation'].get('load_checkpoint', True):
+        checkpoint_dir = cfg['training']['checkpoint_dir']
+        checkpoints = [f for f in os.listdir(checkpoint_dir) if f.endswith('.ckpt')]
+        if checkpoints:
+            latest_checkpoint = max([os.path.join(checkpoint_dir, ckpt) for ckpt in checkpoints], key=os.path.getctime)
+            print(f"Loading checkpoint for evaluation: {latest_checkpoint}")
+            model = NERLightningModule.load_model_from_checkpoint(latest_checkpoint)
+        else:
+            print("No checkpoint found for evaluation, using initial model.")
+            model = NERLightningModule(config_path)
+    else:
+        model = NERLightningModule(config_path)
+
     evaluate.run_evaluation(config_path, split)
 
 if __name__ == '__main__':
