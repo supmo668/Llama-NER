@@ -16,6 +16,16 @@ To monitor the training and evaluation progress, you can use TensorBoard. The lo
 
 This will launch TensorBoard, and you can view the logs by navigating to `http://localhost:6006` in your web browser.
 
+### Exporting TensorBoard Data
+
+You can export TensorBoard logs to CSV for further analysis using the `export_tensorboard_data.py` script:
+
+```bash
+python scripts/export_tensorboard_data.py --path <path_to_log_directory>
+```
+
+This script will convert the TensorBoard logs into a CSV format, allowing for easy data manipulation and visualization outside of TensorBoard.
+
 ## Configuring Log and Checkpoint Locations
 
 You can configure the locations for logs and checkpoints in the `config/config.yaml` file:

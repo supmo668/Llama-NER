@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 import torch
 import torch.multiprocessing as mp
 mp.set_start_method('spawn', force=True)
+import torchmetrics
 
 from src.model import TokenClassificationModel
 import yaml
@@ -16,6 +17,13 @@ class NERLightningModule(pl.LightningModule):
             self.model = TokenClassificationModel(config_path)
             self.learning_rate = float(self.cfg['training']['lr'])
             self.save_hyperparameters()
+
+        # Initialize metrics
+        self.test_metrics = torchmetrics.MetricCollection({
+            "precision": torchmetrics.Precision(task="multiclass", num_classes=self.model.num_labels, average='macro'),
+            "recall": torchmetrics.Recall(task="multiclass", num_classes=self.model.num_labels, average='macro'),
+            "f1": torchmetrics.F1(task="multiclass", num_classes=self.model.num_labels, average='macro')
+        }, prefix="test_")
 
     @staticmethod
     def load_model_from_checkpoint(checkpoint_path):
@@ -44,7 +52,17 @@ class NERLightningModule(pl.LightningModule):
         outputs = self(batch)
         loss = outputs["loss"]
         self.log("test_loss", loss, prog_bar=True)
+
+        # Update metrics
+        preds = torch.argmax(outputs.logits, dim=-1)
+        self.test_metrics.update(preds, batch["labels"])
+
         return loss
+
+    def on_test_epoch_end(self):
+        # Compute and log metrics
+        self.log_dict(self.test_metrics.compute())
+        self.test_metrics.reset()
     
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(

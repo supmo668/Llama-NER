@@ -6,21 +6,8 @@ import torch
 from datasets import load_from_disk
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from lightning.pytorch.accelerators import find_usable_cuda_devices
-
+from src.dataloader import get_dataloader
 from src.lightning_module import NERLightningModule
-
-def custom_collate(batch, device="cuda"):
-    # Convert each field in the batch to a tensor and move to the specified device
-    for i in range(len(batch)):
-        for key in batch[i]:
-            if isinstance(batch[i][key], list):
-                batch[i][key] = torch.tensor(batch[i][key])
-            else:
-                batch[i][key] = batch[i][key]
-    return default_collate(batch)
-
-def custom_collate_fn(batch):
-    return custom_collate(batch)
 
 def run_training(config_path: str):
     with open(config_path, 'r') as f:
@@ -32,21 +19,8 @@ def run_training(config_path: str):
     
     batch_size = cfg['data']['batch_size']
     
-    train_dataloader = DataLoader(
-        train_data,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=4,
-        persistent_workers=True,
-        collate_fn=custom_collate_fn
-    )
-    val_dataloader = DataLoader(
-        val_data,
-        batch_size=batch_size,
-        num_workers=4,
-        persistent_workers=True,
-        collate_fn=custom_collate_fn
-    )
+    train_dataloader = get_dataloader(train_data, batch_size)
+    val_dataloader = get_dataloader(val_data, batch_size)
     
     # Initialize model
     if cfg['training'].get('use_checkpoint', False):
