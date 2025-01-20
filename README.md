@@ -1,61 +1,39 @@
-# NER Pipeline
+# Named Entity Recognition Pipeline
 
-A comprehensive Named Entity Recognition (NER) pipeline using **PyTorch Lightning** and **Transformers**. This project provides a modular and extensible framework for training and evaluating NER models with optional CRF layers and advanced loss functions. In addition, it explores a cutting-edge **embedding-based label smoothing** approach—motivated by the idea that some entity types are more semantically related than others and should be treated accordingly during training.
+A comprehensive Named Entity Recognition (NER) implementation using **PyTorch Lightning** and the **Transformers** library. This project provides a modular framework for training and evaluating NER models, featuring CRF layers and advanced loss functions. The implementation includes an embedding-based label smoothing approach that accounts for semantic relationships between entity types.
 
----
+## Features
 
-## Monitoring Training and Evaluation
+- **Modular Architecture**: Clean separation of data processing, model training, and evaluation
+- **Transformer Integration**: Support for state-of-the-art transformer models
+- **Advanced Components**:
+  - CRF layer for improved boundary detection
+  - Focal Loss for class imbalance
+  - Embedding-based label smoothing
+  - Compound loss functions
+- **Robust Training**: PyTorch Lightning for structured and scalable training
+- **Comprehensive Evaluation**: Detailed metrics using seqeval
+- **Full CLI Support**: Command-line interface for all operations
+- **Configurable**: YAML-based configuration system
 
-To monitor the training and evaluation progress, you can use TensorBoard. The logs are stored in the directory specified in the configuration file under `training.log_dir`.
+## Training Metrics
 
-### Start TensorBoard
+Below are the key training metrics visualizations:
 
-```bash
-./scripts/tensorboard.sh
-```
-
-This will launch TensorBoard, and you can view the logs by navigating to `http://localhost:6006` in your web browser.
-
-### Exporting TensorBoard Data
-
-You can export TensorBoard logs to CSV for further analysis using the `export_tensorboard_data.py` script:
-
-```bash
-python scripts/export_tensorboard_data.py --path <path_to_log_directory>
-```
-
-This script will convert the TensorBoard logs into a CSV format, allowing for easy data manipulation and visualization outside of TensorBoard.
-
-### Training Metrics Visualization
-
-Below are the training metrics visualizations showing the model's performance during training:
-
-#### Training Loss
+### Training Loss
 ![Training Loss](img/train_loss.svg)
 
-#### Validation Loss
+### Validation Loss
 ![Validation Loss](img/val_loss.svg)
 
-#### Validation Accuracy
+### Validation Accuracy
 ![Validation Accuracy](img/val_accuracy.svg)
 
-## Configuring Log and Checkpoint Locations
+## Technical Implementation
 
-You can configure the locations for logs and checkpoints in the `config/config.yaml` file:
+### Model Architecture
+The implementation uses a token classification approach where each token is assigned a label indicating its entity type or non-entity status. Example output format:
 
-```yaml
-training:
-  log_dir: "lightning_logs"  # Directory for storing logs
-  checkpoint_dir: "checkpoints"  # Directory for storing model checkpoints
-```
-
-Adjust these paths as needed to suit your project structure.
-
----
-
-## Intuition & Problem Formulation
-
-NER is about **finding and classifying named entities** (e.g., people, organizations, locations) in unstructured text. Traditional approaches treat the task as **token classification**: each token (or sub-token) is assigned a label indicating the entity type or "outside" (non-entity). For example:
 ```
 Barack  B-PER
 Obama   I-PER
@@ -64,268 +42,73 @@ born    O
 in      O
 Hawaii  B-LOC
 ```
-In modern systems, **Transformer models** (e.g., BERT, Llama, Mistral) or specialized frameworks like the **ArcGIS `EntityRecognizer`** model are fine-tuned to this task. However, each domain or dataset can introduce unique nuances:
-- Some entity types overlap semantically (e.g., "org" vs. "company").
-- Minor label misalignments significantly degrade performance (e.g., "B-PER" vs. "B-ORG").
 
-Hence, **flexible loss objectives** and domain-oriented training procedures become vital. This project embraces **PyTorch Lightning** for structured training, advanced losses (e.g., CRF, embedding-based label smoothing), and a flexible approach to data ingestion.
+### Key Components
 
----
+1. **Data Processing**
+   - Efficient tokenization with subword handling
+   - Label alignment for transformer tokenization
+   - Support for custom datasets
 
-## Challenges in NER
+2. **Training Pipeline**
+   - Configurable learning rates and batch sizes
+   - Checkpoint management
+   - Progress monitoring via TensorBoard
+   - Flexible loss function composition
 
-1. **Ambiguity**  
-   Named entities can be ambiguous. For example, "Apple" could refer to a fruit or the company. Proper context is essential for correct classification.
-
-2. **Boundary Detection**  
-   Identifying where a named entity starts and ends can be tricky—especially when entities are nested or split by punctuation. For instance, “President of the United States” vs. “United States” within that phrase.
-
-3. **Contextual Variability**  
-   Entities can have multiple meanings depending on context. E.g., "Jordan" could be a person or a country. Accurately capturing context is crucial.
-
-4. **Data Imbalance**  
-   Certain entity types may occur more frequently than others (e.g., many person mentions but fewer organization mentions). Imbalanced data can harm performance.
-
-5. **Domain Adaptation**  
-   Applying NER to specialized domains (like biomedical text) often requires domain-specific knowledge. Models trained on general-purpose corpora may struggle in these contexts.
-
-6. **Annotation Errors**  
-   Manually labeled datasets can contain inconsistencies or mistakes, introducing noise that negatively impacts model training.
-
-7. **Overfitting**  
-   With limited or domain-specific data, a large model can easily overfit, failing to generalize to unseen text.
-
----
-
-## Intelligent Loss Functions & Objectives
-
-To address the above challenges, we can leverage **advanced loss functions** and **objectives** tailored to NER. These methods add structure, focus, or domain-specific insight into the training process.
-
-### 1. Focal Loss
-
-**Problem Addressed**: Data imbalance in entity classes can lead to poor performance on rarer classes.  
-**Objective**: Focal Loss modifies cross-entropy by down-weighting easy examples and focusing on hard ones:
-```
-FL(p_t) = -α_t (1 - p_t)^γ log(p_t)
-```
-where `p_t` is the probability of the true class, `α_t` is a balancing factor, and `γ > 0` is the focusing parameter. This effectively upweights underrepresented or harder samples.
-
-### 2. Boundary-aware Loss
-
-**Problem Addressed**: Fine-grained boundary detection is critical for NER.  
-**Objective**: A specialized loss that measures the overlap (e.g., Intersection over Union, IoU) between predicted entity spans and gold spans can help the model learn precise boundaries:
-```
-IoU = | A ∩ B | / | A ∪ B |
-```
-Incorporating IoU-like metrics into the loss can better align the model’s predictions with correct entity boundaries.
-
-### 3. Multi-task Learning Objectives
-
-**Problem Addressed**: Contextual variability & domain adaptation.  
-**Objective**: Combine NER with related tasks (POS tagging, entity linking, etc.) under a multi-task framework. Each task contributes to a combined loss:
-```
-Total Loss = λ1 * Loss_NER + λ2 * Loss_POS + ...
-```
-where different λ weights govern each task’s importance. This helps the model share representations and adapt more robustly.
-
-### 4. Contrastive Loss
-
-**Problem Addressed**: Disambiguating entities that appear similar (e.g., "Jordan" the country vs. the person).  
-**Objective**: Create positive and negative pairs of entity contexts and penalize incorrect clustering with a margin-based or distance-based loss:
-```
-L = (1/N) * Σ [ y_i * max(0, m - D(x_i, x_j)) + (1 - y_i) * D(x_i, x_j) ]
-```
-This pushes confusing entities apart in embedding space, improving clarity.
-
-### 5. CRF Layer (Conditional Random Fields)
-
-**Problem Addressed**: Dependent or sequential labels in NER (e.g., `I-PER` must follow `B-PER`).  
-**Objective**: A CRF can incorporate transition constraints and sequence-level decoding, ensuring more coherent label predictions.
-
----
-
-## Features
-
-- **Modular project structure** with clear separation of concerns  
-- **Support for various transformer models** from [Hugging Face](https://huggingface.co/)  
-- **Optional CRF layer** for improved entity boundary detection  
-- **Advanced loss functions** for better training:
-  - **Enhanced Label Smoothing with Embeddings**: Learns semantic relationships between labels  
-  - **Focal Loss** for handling class imbalance  
-  - **Dice Loss** for improved performance on imbalanced datasets  
-  - **Compound Loss** for combining multiple loss functions  
-- **PyTorch Lightning** for structured and scalable training  
-- **Comprehensive evaluation** metrics using [seqeval](https://github.com/chakki-works/seqeval)  
-- **CLI interface** for easy pipeline execution  
-- **Configurable hyperparameters** via YAML  
-
----
+3. **Evaluation System**
+   - Standard NER metrics (precision, recall, F1)
+   - Detailed classification reports
+   - Error analysis capabilities
 
 ## Project Structure
 
 ```
-my_ner_project/
+.
 ├── README.md
 ├── requirements.txt
 ├── data/
-│   ├── raw/         # for storing raw data
-│   └── processed/   # for storing processed data
+│   ├── raw/         # Raw datasets
+│   └── processed/   # Processed data
 ├── config/
-│   └── config.yaml  # project configs
+│   └── config.yaml  # Configuration
 ├── scripts/
-│   └── run.sh       # convenience script
-│   └── tensorboard.sh  # script for launching TensorBoard
+│   ├── run.sh       # Entry point
+│   └── tensorboard.sh  # Monitoring
 └── src/
     ├── cli.py         # CLI interface
-    ├── data_prep.py   # data processing
-    ├── model.py       # model architecture
-    ├── losses/        # advanced loss functions
-    │   ├── crf.py                # CRF implementation
-    │   ├── focal_loss.py         # Focal Loss
-    │   ├── label_smoothing.py    # Basic Label Smoothing
-    │   ├── embedding_label_smoothing.py # Enhanced Label Smoothing
-    │   ├── dice_loss.py          # Dice Loss
-    │   └── compound_loss.py      # Loss Combination
-    ├── lightning_module.py  # training logic
-    ├── train.py       # training pipeline
-    └── evaluate.py    # evaluation pipeline
+    ├── data_prep.py   # Data processing
+    ├── model.py       # Architecture
+    ├── losses/        # Loss functions
+    │   ├── crf.py
+    │   ├── focal_loss.py
+    │   ├── label_smoothing.py
+    │   └── compound_loss.py
+    ├── lightning_module.py
+    ├── train.py
+    └── evaluate.py
 ```
-
----
-
-## Data & Modeling Approach
-
-1. **Data Preparation**  
-   - The pipeline uses Hugging Face Datasets or your own custom dataset in `data/raw`.  
-   - Tokenization and label alignment handle subwords carefully (important for Transformers).  
-   - If domain-specific NER tasks are needed (e.g., addresses, place names, etc.), you can integrate domain knowledge, similar to **ArcGIS’s `EntityRecognizer`** approach, which has specialized training on geospatial text.
-
-2. **Modeling**  
-   - Choose any **Transformer** backbone (e.g., BERT, RoBERTa, Mistral, LLaMA).  
-   - An optional **CRF layer** refines boundary predictions and ensures sequence-level consistency.  
-   - For domain adaptation or smaller GPU constraints, you can use parameter-efficient fine-tuning methods (e.g., LoRA, Adapters).
-
-3. **Training**  
-   - Managed by **PyTorch Lightning** for clarity and reproducibility.  
-   - Easy to incorporate advanced callbacks (e.g., early stopping, logging).  
-   - Multiple loss functions (including CRF and specialized objectives) are integrated with a uniform interface, enabling quick experimentation.
-
-4. **Evaluation**  
-   - Computed with `seqeval` for standard metrics (precision, recall, F1).  
-   - Simple interface to compare performance across multiple models, losses, and domain settings.
-
----
-
-## Using the Python UV CLI Tool
-
-For convenience and abstraction from dependencies, you can use the `uv` package management tool to run the various components of this NER pipeline. This tool simplifies the execution of scripts by managing the environment and dependencies.
-
-### Installation
-
-Make sure you have the `uv` package installed:
-
-```bash
-pip install uv
-```
-
-### Running the CLI Commands
-
-You can use the following commands to run the data preparation, training, and evaluation steps:
-
-```bash
-# Prepare Data
-uv run src.cli prepare_data --config-path config/config.yaml --ratio 0.8
-
-# Train Model
-uv run src.cli run_train --config-path config/config.yaml
-
-# Evaluate Model
-uv run src.cli run_evaluate --config-path config/config.yaml --split test
-```
-
-These commands will execute the respective functions using the `uv` tool, ensuring that all dependencies are correctly managed and isolated.
-
----
-
-## Innovation: Advanced Loss Objectives
-
-### Enhanced Label Smoothing with Embeddings
-
-**Traditional label smoothing** uses a fixed probability (e.g., 0.1) for off-target labels. Our approach **learns label embeddings** to capture *relationships* between entity types:
-
-1. **Label Embeddings**: Each label (e.g., `B-PER`, `I-PER`, `B-ORG`) is assigned a learnable vector.  
-2. **Similarity-Based Softening**: The smoothing distribution is computed from similarity between the *gold label* embedding and all other label embeddings (e.g., `B-ORG` might get a higher "similarity score" than `B-LOC`).  
-3. **Adaptive Weighting**: A temperature parameter (α) controls the distribution’s sharpness, balancing between hard targets and fully softened labels.
-
-**Benefits**:  
-- Preserves relationships between labels (makes “mistakes” less penalized when they are semantically close).  
-- Improves generalization and domain transfer, inspired by a teacher-student strategy.
-
-**Usage**:
-```python
-from src.losses.embedding_label_smoothing import EmbeddingLabelSmoothing
-
-loss_fn = EmbeddingLabelSmoothing(
-    num_labels=9,        # e.g., number of NER tags
-    hidden_size=768,     # from your transformer model
-    label_emb_dim=32,    # dimension for label embeddings
-    smoothing_alpha=10.0 # temperature
-)
-```
-
----
-
-## Installation
-
-1. **Create a virtual environment**:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
----
 
 ## Usage
 
-### 1. CLI Entry Points
-
-We provide a **Click-based CLI** for easy orchestration:
+### Installation
 
 ```bash
-python -m src.cli prepare-data     # Preprocess and tokenize data
-python -m src.cli run-train       # Train the model
-python -m src.cli run-evaluate    # Evaluate on test or val split
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-### 2. Shell Script
+### Configuration
 
-Alternatively, use `scripts/run.sh`:
+All parameters are configured in `config/config.yaml`:
 
-```bash
-chmod +x scripts/run.sh
-./scripts/run.sh all
-```
-
-- `prepare` for data prep  
-- `train` for model training  
-- `evaluate` for evaluation  
-
----
-
-## Configuration
-
-All main hyperparameters are in `config/config.yaml`:
-```
+```yaml
 model:
   base_model: "bert-base-cased"
   num_labels: 9
   loss:
-    type: "embedding_label_smoothing"  # or "focal", "dice", "compound"
+    type: "embedding_label_smoothing"
     params:
       label_emb_dim: 32
       smoothing_alpha: 10.0
@@ -335,37 +118,105 @@ training:
   epochs: 3
   batch_size: 8
   gpus: 1
-  log_dir: "lightning_logs"  # Directory for storing logs
-  checkpoint_dir: "checkpoints"  # Directory for storing model checkpoints
+  log_dir: "lightning_logs"
+  checkpoint_dir: "checkpoints"
 ```
-You can toggle between different losses by specifying `type`, and pass relevant parameters in `params`.
 
----
+### CLI Commands
 
-## References & Related Works
+The project provides a comprehensive CLI interface for all operations:
 
-1. **ArcGIS `EntityRecognizer` Model**  
-   - Provided insight into domain adaptation for specialized entity recognition (e.g., location-based entities).  
-   - Showcases advanced fine-tuning and real-world usage scenarios.
+```bash
+# Data Preparation
+python -m src.cli prepare-data --config-path config/config.yaml --ratio 0.8
 
-2. **Hugging Face Transformers**  
-   - For robust, pretrained language models and easy integration with token-classification tasks.
+# Training
+python -m src.cli run-train --config-path config/config.yaml
 
-3. **PyTorch Lightning**  
-   - For structured, reproducible experiments and flexible training loops.
+# Evaluation
+python -m src.cli run-evaluate --config-path config/config.yaml --split test
+```
 
-4. **torchcrf** (or custom CRF)  
-   - Improves entity boundary detection by modeling label dependencies.
+Alternatively, use the provided shell scripts:
 
-5. Research in **label smoothing** & **soft targets**  
-   - Inspired by teacher-student methods in knowledge distillation, which guided the label-embedding approach.
+```bash
+# Run complete pipeline
+./scripts/run.sh all
 
----
+# Run individual steps
+./scripts/run.sh prepare
+./scripts/run.sh train
+./scripts/run.sh evaluate
+```
+
+### Training Monitoring
+
+Monitor training progress using TensorBoard:
+
+```bash
+# Launch TensorBoard
+./scripts/tensorboard.sh
+
+# Access dashboard at http://localhost:6006
+```
+
+Export TensorBoard logs to CSV for further analysis:
+
+```bash
+python scripts/export_tensorboard_data.py --path <log_directory>
+```
+
+### Loss Functions
+
+The implementation includes several loss functions for different use cases:
+
+```python
+# Available in src/losses/
+- crf.py                # CRF implementation
+- focal_loss.py         # Class imbalance handling
+- label_smoothing.py    # Basic label smoothing
+- embedding_label_smoothing.py # Enhanced label smoothing
+- compound_loss.py      # Loss combination
+```
+
+Configure the loss function in `config.yaml`:
+
+```yaml
+model:
+  loss:
+    type: "embedding_label_smoothing"  # or "focal", "dice", "compound"
+    params:
+      label_emb_dim: 32
+      smoothing_alpha: 10.0
+```
+
+### Performance Optimization
+
+Adjust these parameters in `config.yaml` for optimal performance:
+
+```yaml
+training:
+  batch_size: 32  # Reduce if GPU memory is limited
+  num_workers: 4  # Set based on available CPU cores
+  gradient_checkpointing: true  # Enable for large models
+```
+
+## Performance Considerations
+
+- **Memory Usage**: Batch size affects GPU memory consumption
+- **Training Speed**: Adjust number of workers based on CPU cores
+- **Model Size**: Consider using gradient checkpointing for large models
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
 
 ## License
 
-This project is licensed under the **MIT License**.
+This project is licensed under the MIT License - see LICENSE for details.
 
----
+## Additional Documentation
 
-**Happy experimenting!** If you have questions or suggestions, feel free to open an issue or contribute via pull requests.
+For detailed technical information about the implementation, including research notes on loss functions, challenges in NER, and theoretical background, see [ResearchNotes.md](ResearchNotes.md).
