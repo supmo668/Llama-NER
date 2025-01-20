@@ -1,17 +1,17 @@
 data:
   dataset_name: "eriktks/conll2003"
+  metadata_path: "data/dataset_metadata.yaml"  # Path to dataset metadata
   max_length: 128
-  batch_size: 8
+  batch_size: 16
 
 model:
   base_model: "unsloth/Llama-3.2-1B-Instruct"
   # "bert-base-uncased" , "meta-llama/Llama-3.2-1B"
-  num_labels: 9 
   freeze_backbone: true  # or false
 
 training:
   lr: 5e-5
-  epochs: 3
+  epochs: 100
   gpus: 1
   log_dir: "lightning_logs"
   checkpoint_dir: "checkpoints"
@@ -33,6 +33,6 @@ evaluation:
   load_checkpoint: true  # Whether to load the latest checkpoint for evaluation
 
 advanced:
-  use_crf: true
+  use_crf: false
   crf_dropout: 0.1
   peft: lora

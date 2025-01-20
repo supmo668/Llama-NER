@@ -1,0 +1,96 @@
+dataset_info:
+  name: eriktks/conll2003
+  split_sizes:
+    test: 690
+    train: 2808
+    validation: 650
+  timestamp: '2025-01-20T07:22:24.254088'
+label_info:
+  chunk_tags:
+    names:
+    - O
+    - B-ADJP
+    - I-ADJP
+    - B-ADVP
+    - I-ADVP
+    - B-CONJP
+    - I-CONJP
+    - B-INTJ
+    - I-INTJ
+    - B-LST
+    - I-LST
+    - B-NP
+    - I-NP
+    - B-PP
+    - I-PP
+    - B-PRT
+    - I-PRT
+    - B-SBAR
+    - I-SBAR
+    - B-UCP
+    - I-UCP
+    - B-VP
+    - I-VP
+    num_classes: 23
+  ner_tags:
+    names:
+    - O
+    - B-PER
+    - I-PER
+    - B-ORG
+    - I-ORG
+    - B-LOC
+    - I-LOC
+    - B-MISC
+    - I-MISC
+    num_classes: 9
+  pos_tags:
+    names:
+    - '"'
+    - ''''''
+    - '#'
+    - $
+    - (
+    - )
+    - ','
+    - .
+    - ':'
+    - '``'
+    - CC
+    - CD
+    - DT
+    - EX
+    - FW
+    - IN
+    - JJ
+    - JJR
+    - JJS
+    - LS
+    - MD
+    - NN
+    - NNP
+    - NNPS
+    - NNS
+    - NN|SYM
+    - PDT
+    - POS
+    - PRP
+    - PRP$
+    - RB
+    - RBR
+    - RBS
+    - RP
+    - SYM
+    - TO
+    - UH
+    - VB
+    - VBD
+    - VBG
+    - VBN
+    - VBP
+    - VBZ
+    - WDT
+    - WP
+    - WP$
+    - WRB
+    num_classes: 47

@@ -3,56 +3,42 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class LabelSmoothingCrossEntropy(nn.Module):
-    """Cross entropy loss with label smoothing for NER tasks.
-    
-    Helps prevent the model from becoming overconfident and improves generalization.
     """
-    
-    def __init__(self, smoothing: float = 0.1, reduction: str = 'mean', ignore_index: int = -100):
-        """
-        Args:
-            smoothing: Label smoothing factor (0 means no smoothing)
-            reduction: 'none', 'mean', or 'sum'
-            ignore_index: Index to ignore (e.g., for padding)
-        """
+    Label smoothing for token classification with an ignore_index.
+    This version excludes tokens where label == -100.
+    """
+    def __init__(self, smoothing=0.1, ignore_index=-100):
         super().__init__()
         self.smoothing = smoothing
-        self.reduction = reduction
         self.ignore_index = ignore_index
     
-    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    def forward(self, logits, target):
         """
-        Compute the label smoothing loss.
-        
-        Args:
-            inputs: Predicted logits (batch_size * sequence_length, num_classes)
-            targets: Ground truth labels (batch_size * sequence_length)
-        
-        Returns:
-            Loss value computed with label smoothing.
+        logits: (N, C) float tensor, where N = number of valid tokens
+        target: (N,) long tensor of gold labels in [0..C-1]
         """
-        # Assume inputs are flattened as (batch_size * sequence_length, num_classes)
-        num_classes = inputs.size(-1)
-        
-        # Create a mask for ignored indices
-        mask = (targets != self.ignore_index).float()
-        
-        # KL div expects log-probabilities for input
-        log_probs = F.log_softmax(inputs, dim=-1)
-        
-        # Get the log probability of the target classes
-        target_probs = torch.zeros_like(log_probs).scatter_(-1, targets.unsqueeze(-1), 1)
-        
-        # Apply label smoothing
-        smoothed_targets = torch.full_like(log_probs, self.smoothing / (num_classes - 1))
-        smoothed_targets.scatter_(-1, targets.unsqueeze(-1), 1 - self.smoothing)
-        
-        # Calculate the loss
-        loss = -(smoothed_targets * log_probs).sum(dim=-1) * mask
-        
-        if self.reduction == 'mean':
-            return loss.sum() / mask.sum()
-        elif self.reduction == 'sum':
-            return loss.sum()
-        else:
-            return loss
+        # 1. Filter out ignore_index tokens
+        valid_mask = (target != self.ignore_index)
+        logits = logits[valid_mask]     # (N_valid, C)
+        target = target[valid_mask]     # (N_valid,)
+
+        if target.numel() == 0:
+            # If there are no valid tokens, return 0.0 loss
+            return logits.sum() * 0.0
+
+        # 2. Softmax probabilities
+        log_probs = F.log_softmax(logits, dim=-1)   # shape: (N_valid, C)
+        n_classes = logits.size(-1)
+
+        # 3. Construct smoothed label distribution
+        #    For correct label: (1 - epsilon); for others: epsilon / (n_classes - 1)
+        with torch.no_grad():
+            smooth_dist = torch.full_like(log_probs, self.smoothing / (n_classes - 1))
+            # place (1 - epsilon) at the correct label index
+            confidence = 1.0 - self.smoothing
+            smooth_dist.scatter_(1, target.unsqueeze(1), confidence)
+
+        # 4. Compute cross entropy with the smoothed distribution
+        #    CE = - \sum_y p_smooth(y) * log_probs(y)
+        loss = -torch.sum(smooth_dist * log_probs, dim=-1).mean()
+        return loss

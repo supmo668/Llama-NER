@@ -1,12 +1,13 @@
-# NER Using a Transformed LLM (Llama-3.2-1B-Instruct)
+# NER Using a Transformed LLM (Llama3.2-1B-Instruct)
 
 ## 1. Introduction
 
-In this report, we detail our approach to transforming an open-source LLM into a genuine NER model. We briefly summarize:
-- The dataset used
-- The model architecture and training method
-- The evaluation criteria and final results
-- A comparison to alternative approaches
+In this report, we describe how we adapted an open-source LLM—specifically, **Llama3.2-1B-Instruct**—into a working NER model. Throughout, we focus on:
+- The partial use of a well-known dataset
+- The architecture changes made for classification
+- Our resulting performance and a brief discussion of limitations
+
+We used only **20% of the dataset** to expedite experimentation, running on a **single P100 GPU**. Configuration details are found in **`config/config.yaml`**, while **`quickstart.ipynb`** demonstrates end-to-end training. Additional project notes are in the **`README.md`**.
 
 ---
 
@@ -14,13 +15,13 @@ In this report, we detail our approach to transforming an open-source LLM into a
 
 ### 2.1 Choice of Dataset
 - **Dataset Name**: `eriktks/conll2003`
-- **Size**: `[14,041 train samples / 3,250 validation samples / 3,453 test samples]` (typical for CONLL-2003)
-- **Reason for Selection**: `[A well-known benchmark for NER, moderate size, widely used in research]`
+- **Size**: We **subsampled 20%** of the full dataset to keep training times manageable.
+- **Reason for Selection**: The ConLL-2003 dataset is a standard, benchmark NER dataset with well-established baselines. Even when partially sampled, it remains sufficiently robust for testing an LLM-based approach.
 
 ### 2.2 Choice of Model
-- **Base LLM**: `unsloth/Llama-3.2-1B-Instruct`
-- **Size**: `~1B parameters`
-- **Reason for Selection**: `[Demonstrates how a smaller Llama variant can be adapted for token classification]`
+- **Base LLM**: `Llama3.2-1B-Instruct`
+- **Size**: Approximately **1B parameters**
+- **Reason for Selection**: We wanted to demonstrate how a smaller generative LLM—originally designed as a decoder-only model for text generation—can be repurposed for token classification. This picks up from existing tools and references (like ArcGIS integrations) that illustrate classification from generative foundations.
 
 ---
 
@@ -28,124 +29,96 @@ In this report, we detail our approach to transforming an open-source LLM into a
 
 ### 3.1 Architecture and Transformations
 
-- **Original Model Config**:  
-  - Base Model: `unsloth/Llama-3.2-1B-Instruct`  
-  - Freeze Backbone: `true` (per `config.yaml`, meaning the backbone is kept frozen except for some adapter layers or classifier head)
-
 - **Token Classification Head**:  
-  - We added a linear classifier of size `(hidden_size, 9)` to predict NER labels (O, B-PER, I-PER, B-ORG, I-ORG, B-LOC, I-LOC, B-MISC, I-MISC).  
-  - `use_crf` is set to `true`, meaning a CRF layer is stacked on top of the logits to enforce valid label transitions.
+  We attach a shallow linear layer (of shape `(hidden_size, 9)`) on top of the LLM’s final hidden state to predict the nine entity labels. Then, a CRF layer enforces consistent label transitions. Importantly, the **embedding layers** of the LLM remain largely untouched in this approach, focusing our learning on the newly added classifier head and optional LoRA (adapter) parameters.
 
-- **Parameter-Efficient Tuning (PEFT)**:  
-  - `peft` is set to `lora`. We insert LoRA adapters into the attention layers for efficient fine-tuning.  
-  - Because `freeze_backbone` is `true`, only LoRA parameters and the classifier/CRF layers are updated.
-
-- **Differences vs. Regular LM Training**:
-  1. **Objective**: Instead of next-token prediction, we use a token-classification (plus CRF) objective with cross-entropy, label smoothing, and CRF log-likelihood.  
-  2. **Loss Function**: We employ a compound loss (`compound_loss`) that combines cross-entropy, CRF negative log-likelihood, and label smoothing in a weighted fashion.
+- **Decoder-Only Constraint**:  
+  Because Llama3.2-1B is a **decoder-only** Transformer, it does not inherently learn a bidirectional context as typical NER models do. This architecture was not designed explicitly for token classification tasks, which often benefit from comprehensive left–right context and deeper morphological or contextual embeddings. Nonetheless, we adapt it by providing entire sequences as inputs and extracting hidden states for classification.
 
 ### 3.2 Training Procedure
+- **Hardware**: Single **P100 GPU**
 - **Hyperparameters**:  
   - Learning Rate: `5e-5`  
   - Batch Size: `8`  
-  - Number of Epochs: `100`  
-  - Loss Function: `compound_loss` with weights  
-    - `cross_entropy_weight`: 0.5  
-    - `crf_weight`: 0.3  
-    - `label_smoothing_weight`: 0.2  
-
-- **Hardware Used**: `Single GPU (1 GPU as specified in config.yaml)`
-
-- **Data Splits** (typical for ConLL-2003):
-  - Train: `14,041 samples`
-  - Validation: `3,250 samples`
-  - Test: `3,453 samples`
+  - Epochs: `100`  
+- **Data Splits**:  
+  - Because we subsampled 20% of the original dataset, we combined or stratified the data in a straightforward manner (not heavily tuned).  
+  - Better data stratification could improve results in future iterations.
+- **Key Metrics from Training Logs** (around epoch 28):  
+  - `train_loss`: `0.3017629384994507`  
+  - `val_loss`: `0.26667168736457825`  
+  - `val_accuracy`: `0.6238653063774109`  
+  - `epoch`: `28.0`
 
 ### 3.3 Challenges & How They Were Addressed
-- **Challenge**: Integrating CRF + LoRA  
-  - **Approach**: We carefully modified the forward pass to handle CRF decoding after applying LoRA-based attention updates, ensuring the final logits are dimensionally correct for CRF.
-- **Challenge**: Freezing the backbone**  
-  - **Approach**: We froze all base model parameters and only allowed LoRA adapters and the classifier layers to update, reducing memory usage and focusing training on the final layers.
+- **Challenge**: Limited Data Utilization and Model Size  
+  - **Approach**: We intentionally reduced the dataset to 20% for speed. This likely impacts final performance, but we used a compound loss (including CRF and label smoothing) to maximize the utility of the smaller training set.
+- **Challenge**: Decoder-Only Architecture for NER  
+  - **Approach**: We rely on the model’s final hidden states plus a CRF head to extract token labels, acknowledging that it may not fully capture the deep bidirectional signals typically gleaned by encoder-based architectures (e.g., BERT).
 
 ---
 
 ## 4. Evaluation and Performance
 
+### Training metrics at epoch 27
+| **Metric**    | **Value**      |
+|---------------|----------------:|
+| **Train loss**  | 0.3017629385   |
+| **Val loss**    | 0.2666716874   |
+| **Val Accuracy**| 0.6238653064   |
+
 ### 4.1 Evaluation Metrics
-We report **accuracy, precision, recall, and F1** on the test set.
+We report **accuracy, precision, recall, and F1** on our test set, but here only placeholders are shown until we finalize the results:
 
-| Metric      | Score        |
-|-------------|-------------:|
-| Accuracy    | `[ACCURACY]` |
-| Precision   | `[PRECISION]`|
-| Recall      | `[RECALL]`   |
-| F1-Score    | `[F1]`       |
-
-*(Place your actual scores above. For example, `Accuracy: 97.1%, Precision: 90.5%, Recall: 89.2%, F1: 89.8%`.)*
+| Metric      | Score         |
+|-------------|--------------:|
+| Accuracy    | `[PLACEHOLDER]` |
+| Precision   | `[PLACEHOLDER]` |
+| Recall      | `[PLACEHOLDER]` |
+| F1-Score    | `[PLACEHOLDER]` |
 
 ### 4.2 Failure Case Analysis
 - **Common Misclassifications**:  
-  1. `[Confusion between B-ORG and B-MISC for certain brand names]`  
-  2. `[Error on multi-word location entities with short contexts]`
+  - Not studied
 
-- **Potential Reasons**: `[Limited context for multi-word entities, partial freezing might hamper domain-specific adaptation for brand names, etc.]`
-- **Mitigation Strategies**: `[Increasing training epochs, adjusting LoRA rank, or unfreezing more layers in the backbone]`
-
----
-
-## 5. Comparison to Other Approaches
-
-### 5.1 Prompt Engineering on ChatGPT/Anthropic
-
-- **Prompt**:
-Please identify all named entities in the following text and provide their types using the format: <entity> - <type>
-
-Text: [INSERT SAMPLE SENTENCE HERE]
-
-- **Observed Performance**:
-- `[Precision]`: `[VALUE]`
-- `[Recall]`: `[VALUE]`
-- `[F1]`: `[VALUE]`
-
-*(You can either run a handful of examples or approximate a test set approach. Include the results here if you systematically tested it.)*
-
-### 5.2 Benchmark (Finetuned BERT or Other SOTA)
-- **Chosen Baseline**: `bert-base-uncased` (finetuned)
-- **Reported Performance**:
-- `[Accuracy / F1 / Etc.]`: `[INSERT VALUES FROM PAPER OR YOUR RUN]`
-- **Comparison**: 
-- `[Our CRF-Llama model is within X% of the BERT baseline, or surpasses it on entity recall, etc.]`
+- **Potential Reasons**: The LLM’s generative, decoder-only nature might limit its representation of left and right contexts equally. Additionally, we only tuned a shallow classification head, which might not capture finer linguistic cues.  
+- **Mitigation Strategies**: Larger training fractions or partially unfreezing deeper model layers could allow more domain-specific adaptation. Adopting a more robust data stratification approach (rather than a naive 20% random sample) could reduce class imbalance or coverage issues.
 
 ---
 
-## 6. Discussion
+## 5. Discussion
 
-### 6.1 Why We Chose This Dataset and Model
-- We selected `eriktks/conll2003` because it is a standard, well-understood NER benchmark, and it fits well within the time constraints for experiments.  
-- For the model, we used `unsloth/Llama-3.2-1B-Instruct` to demonstrate that a smaller LLaMA variant, combined with parameter-efficient methods like LoRA, can handle NER effectively without massive hardware.
+### 5.1 Why We Chose This Dataset and Model
+We used **ConLL-2003** because it’s a definitive benchmark for NER, and even a fraction of it suffices for illustrating the technique. We selected **Llama3.2-1B** to demonstrate that a smaller, generative, decoder-only LLM can be nudged into a discriminative role, despite not being originally designed for tasks like NER.
 
-### 6.2 Differences in Training vs. Regular LM
-- We trained the model with **compound_loss** for **token classification** rather than next-token generation. This merges cross-entropy on labels, CRF constraints, and label smoothing, focusing on labeling accuracy rather than generative quality.
+### 5.2 Differences in Training vs. Regular LM
+Our approach replaces the typical next-token prediction objective with a **compound token-classification objective**. This includes:
+- **Cross-entropy** to match gold labels
+- **CRF** for valid label transitions
+- **Label smoothing** to handle noisy or ambiguous tokens
 
-### 6.3 Limitations & Possible Improvements
+Moreover, the model’s generative pretraining is not specifically harnessed. We freeze most of the LLM, fine-tuning primarily a **shallow classification layer**, which limits the capacity for deep morphological or semantic adaptation but saves time and compute.
+
+### 5.3 Limitations & Possible Improvements
 - **Limitations**:  
-- A 1B-parameter model may still be large for some contexts; training can be slow if not carefully optimized.  
-- Freezing the backbone might limit domain adaptation.
-- **Potential enhancements**:
-1. **Partial unfreezing** of higher layers for potentially higher F1.  
-2. **Data augmentation** or multi-task learning with similar tagging tasks.  
-3. **Quantization** to reduce memory footprint and speed inference.
+  - Using only 20% of data can skew coverage of entity types.  
+  - Freezing most of the LLM might prevent learning deeper context.  
+  - Decoder-only nature might underperform compared to bidirectional approaches that better handle entity boundaries.
+
+- **Potential enhancements**:  
+  - More **balanced or stratified subsampling** to ensure all entity classes are well-represented.  
+  - **Partial unfreezing** of key transformer layers or employing a more sophisticated parameter-efficient tuning (e.g., LoRA with deeper ranks).  
+  - Considering a **bidirectional or dual-architecture** adaptation if truly maximizing NER performance is critical.
 
 ---
 
-## 7. Conclusion
+## 6. Conclusion
 
-We successfully transformed `unsloth/Llama-3.2-1B-Instruct` into a specialized NER model using LoRA-based fine-tuning and a CRF head. Our approach achieved `[F1]` on the `eriktks/conll2003` test set, demonstrating the viability of adapting a generative LLM to a discriminative sequence-labeling task. While freezing the backbone reduced resource usage, future work could explore partial unfreezing for improved performance.
+We successfully adapted `Llama3.2-1B-Instruct` for token-level NER classification on a **subset (20%)** of the ConLL-2003 dataset. By adding a shallow classification layer and a CRF head, we demonstrated that a decoder-only LLM—originally intended for text generation—can be made to perform named entity recognition. Our preliminary validation accuracy reached **~0.624** at epoch 28, suggesting a promising direction for lightweight transformations of generative models into discriminative tasks. As future work, we aim to expand data utilization, refine data splits, and explore partial unfreezing to further boost entity detection performance.
 
 ---
 
 ## Appendices (Optional)
 
-- **Code and Notebook**: Submitted as `[NOTEBOOK / .IPYNB FILE]`
-- **Scripts**: `[ANY SHELL SCRIPTS OR CLI COMMANDS USED]`
-
+- **Code and Notebook**: Submitted as `quickstart.ipynb`
+- **Scripts**: Refer to `README.md`

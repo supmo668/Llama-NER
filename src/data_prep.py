@@ -24,13 +24,15 @@ def prepare_data(config_path: str, ratio: float = 1.0):
     max_length = config['data']['max_length']      # e.g., 128
     base_model = config['model']['base_model']     # e.g., "openlm-research/llama-3.2-3b"
 
+    save_path = "data/processed"
+    os.makedirs(save_path, exist_ok=True)
     # 3. Load dataset
     raw_datasets = load_dataset(dataset_name)
     # raw_datasets should now contain keys: ["train", "validation", "test"]
 
     # Save label list for NER tags
     label_list = raw_datasets['train'].features['ner_tags'].feature.names
-    with open(os.path.join('data', 'processed', 'label_list.txt'), 'w') as label_file:
+    with open(os.path.join(save_path, 'label_list.txt'), 'w') as label_file:
         for label in label_list:
             label_file.write(label + "\n")
 
@@ -96,10 +98,61 @@ def prepare_data(config_path: str, ratio: float = 1.0):
     )
 
     # 7. Save processed datasets
-    save_path = "data/processed"
-    os.makedirs(save_path, exist_ok=True)
     processed_train.save_to_disk(os.path.join(save_path, "train"))
     processed_val.save_to_disk(os.path.join(save_path, "val"))
     processed_test.save_to_disk(os.path.join(save_path, "test"))
 
+    # Save dataset metadata
+    def save_dataset_metadata(dataset, dataset_name: str, output_dir: str = 'data'):
+        """
+        Save dataset metadata to a YAML file.
+        
+        Args:
+            dataset: HuggingFace DatasetDict
+            dataset_name: Name of the dataset from config
+            output_dir: Directory to save metadata
+        """
+        import os
+        import yaml
+        from datetime import datetime
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Extract metadata
+        metadata = {
+            'dataset_info': {
+                'name': dataset_name,  # Use the name from config
+                'split_sizes': {
+                    'train': len(dataset['train']),
+                    'validation': len(dataset['validation']),
+                    'test': len(dataset['test'])
+                },
+                'timestamp': datetime.now().isoformat()
+            },
+            'label_info': {
+                'ner_tags': {
+                    'num_classes': len(dataset['train'].features['ner_tags'].feature.names),
+                    'names': dataset['train'].features['ner_tags'].feature.names
+                },
+                'pos_tags': {
+                    'num_classes': len(dataset['train'].features['pos_tags'].feature.names),
+                    'names': dataset['train'].features['pos_tags'].feature.names
+                },
+                'chunk_tags': {
+                    'num_classes': len(dataset['train'].features['chunk_tags'].feature.names),
+                    'names': dataset['train'].features['chunk_tags'].feature.names
+                }
+            }
+        }
+        
+        # Save metadata
+        metadata_path = os.path.join(output_dir, 'dataset_metadata.yaml')
+        with open(metadata_path, 'w') as f:
+            yaml.safe_dump(metadata, f, default_flow_style=False)
+        
+        return metadata_path
+
+    metadata_path = save_dataset_metadata(raw_datasets, dataset_name, 'data')
+    
     print("Data preparation complete! Processed datasets saved to disk.")

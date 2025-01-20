@@ -26,6 +26,19 @@ python scripts/export_tensorboard_data.py --path <path_to_log_directory>
 
 This script will convert the TensorBoard logs into a CSV format, allowing for easy data manipulation and visualization outside of TensorBoard.
 
+### Training Metrics Visualization
+
+Below are the training metrics visualizations showing the model's performance during training:
+
+#### Training Loss
+![Training Loss](img/train_loss.svg)
+
+#### Validation Loss
+![Validation Loss](img/val_loss.svg)
+
+#### Validation Accuracy
+![Validation Accuracy](img/val_accuracy.svg)
+
 ## Configuring Log and Checkpoint Locations
 
 You can configure the locations for logs and checkpoints in the `config/config.yaml` file:

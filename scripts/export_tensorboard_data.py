@@ -40,7 +40,7 @@ def export_tensorboard_data(path):
         else:
             raise ValueError("'lightning_logs' directory does not exist.")
 
-    df = tflog2pandas(path)
+    df = tflog2pandas(str(path))
     df.to_csv("output.csv")
 
 if __name__ == '__main__':

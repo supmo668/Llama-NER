@@ -8,13 +8,15 @@ from src.lightning_module import NERLightningModule
 from src.dataloader import get_dataloader
 from seqeval.metrics import precision_score, recall_score, f1_score, classification_report
 import torch
-
+import pandas as pd
+from pytorch_lightning.callbacks import Callback
+from datetime import datetime
 
 def load_evaluation_data(config_path: str, split: str = 'test'):
     with open(config_path, 'r') as f:
         cfg = yaml.safe_load(f)
     eval_data = load_from_disk(Path("data/processed") / split)
-    eval_dataloader = get_dataloader(eval_data, cfg['data']['batch_size'])
+    eval_dataloader = get_dataloader(eval_data, cfg['data']['batch_size'], num_workers=1)
     return eval_dataloader, cfg
 
 
@@ -78,18 +80,87 @@ def calculate_metrics(predictions, references, label_list):
     }
 
 
+class MetricsCallback(Callback):
+    """Callback to save metrics to CSV file after testing."""
+    
+    def __init__(self, output_dir: str):
+        super().__init__()
+        self.output_dir = output_dir
+        self.test_metrics = {}
+        
+    def on_test_epoch_end(self, trainer: pl.Trainer, pl_module: 'LightningModule') -> None:
+        """Collect metrics at the end of test epoch."""
+        metrics = trainer.callback_metrics
+        
+        # Convert tensor values to python scalars and format metric names
+        self.test_metrics = {}
+        for k, v in metrics.items():
+            # Remove 'test_' prefix for cleaner names
+            metric_name = k.replace('test_', '') if k.startswith('test_') else k
+            # Convert tensor to scalar
+            metric_value = v.item() if hasattr(v, 'item') else v
+            # Format float values
+            if isinstance(metric_value, float):
+                metric_value = f"{metric_value:.4f}"
+            self.test_metrics[metric_name] = metric_value
+        
+    def save_metrics(self) -> None:
+        """Save the collected metrics to a CSV file."""
+        if not self.test_metrics:
+            return
+            
+        # Create output directory if it doesn't exist
+        os.makedirs(self.output_dir, exist_ok=True)
+        
+        # Create timestamp for the filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = os.path.join(self.output_dir, f'test_metrics_{timestamp}.csv')
+        
+        # Add timestamp to metrics
+        metrics_with_time = {
+            'timestamp': timestamp,
+            **self.test_metrics
+        }
+        
+        # Convert metrics to DataFrame
+        df = pd.DataFrame([metrics_with_time])
+        
+        # Reorder columns to put important metrics first
+        important_metrics = ['accuracy', 'precision', 'recall', 'f1', 'loss']
+        columns = ['timestamp'] + important_metrics + [
+            col for col in df.columns 
+            if col not in important_metrics + ['timestamp']
+        ]
+        df = df.reindex(columns=columns)
+        
+        # Save to CSV
+        df.to_csv(output_file, index=False)
+        print(f"\nMetrics saved to: {output_file}")
+        print("\nTest Metrics Summary:")
+        for metric in important_metrics:
+            if metric in self.test_metrics:
+                print(f"{metric.capitalize()}: {self.test_metrics[metric]}")
+
+
 def run_evaluation(config_path: str, split: str = 'test'):
+    """
+    Run evaluation and ensure proper cleanup of resources.
+    """
+    
     eval_dataloader, cfg = load_evaluation_data(config_path, split)
     model = initialize_model(cfg, config_path)
-
-    # Setup trainer
+    
+    # Initialize trainer with metrics callback
     trainer = pl.Trainer(
         accelerator="gpu" if cfg['training']['gpus'] > 0 else "cpu",
         devices=1,  # Recommended to use a single device for testing
-        log_every_n_steps=50
+        log_every_n_steps=200
     )
 
     # Test the model
-    trainer.test(model, dataloaders=eval_dataloader)
-
-    print("Evaluation complete!")
+    trainer.test(model=model, datamodule=eval_dataloader)
+    
+        
+if __name__ == '__main__':
+    # Set multiprocessing start method
+    run_evaluation('path_to_config.yaml')

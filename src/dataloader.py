@@ -13,7 +13,7 @@ def custom_collate(batch, device="cuda"):
     return default_collate(batch)
 
 
-def get_dataloader(dataset, batch_size, num_workers=4, persistent_workers=True):
+def get_dataloader(dataset, batch_size, num_workers=3, persistent_workers=False):
     return DataLoader(
         dataset,
         batch_size=batch_size,
