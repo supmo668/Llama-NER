@@ -16,7 +16,7 @@ def load_evaluation_data(config_path: str, split: str = 'test'):
     with open(config_path, 'r') as f:
         cfg = yaml.safe_load(f)
     eval_data = load_from_disk(Path("data/processed") / split)
-    eval_dataloader = get_dataloader(eval_data, cfg['data']['batch_size'], num_workers=1)
+    eval_dataloader = get_dataloader(eval_data, cfg['data']['batch_size'])
     return eval_dataloader, cfg
 
 
@@ -158,9 +158,8 @@ def run_evaluation(config_path: str, split: str = 'test'):
     )
 
     # Test the model
-    trainer.test(model=model, datamodule=eval_dataloader)
+    trainer.test(model=model, dataloaders=eval_dataloader)
     
         
 if __name__ == '__main__':
-    # Set multiprocessing start method
-    run_evaluation('path_to_config.yaml')
+    run_evaluation('config/config.yaml')
