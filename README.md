@@ -21,13 +21,14 @@ A comprehensive Named Entity Recognition (NER) implementation using **PyTorch Li
 Below are the key training metrics visualizations:
 
 ### Training Loss
-![Training Loss](img/train_loss.svg)
+<img src="img/train_loss.svg" width="30%" height="30%">  
+
 
 ### Validation Loss
-![Validation Loss](img/val_loss.svg)
+<img src="img/val_loss.svg" width="30%" height="30%">  
 
 ### Validation Accuracy
-![Validation Accuracy](img/val_accuracy.svg)
+<img src="img/val_accuracy.svg" width="30%" height="30%">  
 
 ## Technical Implementation
 
